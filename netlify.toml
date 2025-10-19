@@ -1,0 +1,26 @@
+[build]
+  base = "frontend"
+  publish = "dist"
+  command = "npm install && npm run build"
+
+[build.environment]
+  NODE_VERSION = "16.20.0"
+  NPM_FLAGS = "--legacy-peer-deps"
+
+# These redirects ensure proper routing for a single-page application
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+# This redirect ensures we have a fallback if build fails
+[[redirects]]
+  from = "/*"
+  to = "/fallback.html"
+  status = 404
+  
+# Netlify dev settings
+[dev]
+  command = "npm run dev"
+  port = 3000
+  publish = "dist"

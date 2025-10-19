@@ -1,0 +1,4 @@
+[submodule "heroku-deploy"]
+	path = backend
+	url = https://github.com/duvallviera/verisense-ai.git
+	branch = main

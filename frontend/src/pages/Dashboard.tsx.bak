@@ -1,0 +1,1231 @@
+import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { 
+  Box, Container, Grid, Typography, Button, Paper, 
+  Divider, Chip, AppBar, Toolbar, IconButton, Menu, MenuItem,
+  List, ListItem, ListItemIcon, ListItemText, TextField, CircularProgress,
+  Collapse
+} from '@mui/material';
+import { styled } from '@mui/material/styles';
+import { useNavigate } from 'react-router-dom';
+import AccountCircleIcon from '@mui/icons-material/AccountCircle';
+import PersonIcon from '@mui/icons-material/Person';
+import LogoutIcon from '@mui/icons-material/Logout';
+import AddIcon from '@mui/icons-material/Add';
+import HistoryIcon from '@mui/icons-material/History';
+import SettingsIcon from '@mui/icons-material/Settings';
+import TuneIcon from '@mui/icons-material/Tune';
+import SendIcon from '@mui/icons-material/Send';
+import DragIndicatorIcon from '@mui/icons-material/DragIndicator';
+import OpenInFullIcon from '@mui/icons-material/OpenInFull';
+import MinimizeIcon from '@mui/icons-material/Minimize';
+import MicIcon from '@mui/icons-material/Mic';
+import StopIcon from '@mui/icons-material/Stop';
+
+import WebcamCapture from '../components/WebcamCapture';
+import EmotionGraph from '../components/EmotionGraph';
+import QuestionPanel from '../components/QuestionPanel';
+import VoiceAnalyzer from '../components/VoiceAnalyzer';
+import AgenticOverlay from '../components/AgenticOverlay';
+import TruthAnalysisCard from '../components/TruthAnalysisCard';
+import DetectionSettings from '../components/DetectionSettings';
+import PsychologicalProfileCard from '../components/analytics/PsychologicalProfileCard';
+// Using TruthAnalysisCard instead of ResponseAnalysisCard
+import { useAuth } from '../context/AuthContext';
+import { useAgentic } from '../context/AgenticContext';
+import { useAgenticInsights } from '../context/AgenticInsightsContext';
+
+// Styled components
+const GlassPaper = styled(Paper)(({ theme }) => ({
+  background: 'rgba(15, 16, 30, 0.6)',
+  backdropFilter: 'blur(10px)',
+  borderRadius: 16,
+  border: '1px solid rgba(255, 255, 255, 0.08)',
+  position: 'relative',
+}));
+
+const GlassAppBar = styled(AppBar)(({ theme }) => ({
+  background: 'rgba(15, 16, 30, 0.8)',
+  backdropFilter: 'blur(10px)',
+  boxShadow: 'none',
+  borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
+}));
+
+const SessionControls = styled(Box)(({ theme }) => ({
+  position: 'fixed',
+  bottom: theme.spacing(3),
+  right: theme.spacing(3),
+  zIndex: 100,
+}));
+
+const ButtonGradient = styled(Button)(({ theme }) => ({
+  background: 'linear-gradient(45deg, #6366f1 30%, #4f46e5 90%)',
+  color: 'white',
+  padding: '10px 20px',
+  borderRadius: 50,
+  boxShadow: '0 3px 10px rgba(99, 102, 241, 0.4)',
+  transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+  '&:hover': {
+    transform: 'translateY(-2px)',
+    boxShadow: '0 6px 15px rgba(99, 102, 241, 0.5)',
+  },
+}));
+
+const Dashboard: React.FC = () => {
+  const navigate = useNavigate();
+  const { user, logout } = useAuth();
+  const { 
+    currentSession, 
+    startSession, 
+    endSession,
+    currentVoiceAnalysis,
+    emotionHistory, // Using emotionHistory instead of interactionHistory
+    truthProbability,
+    startVoiceAnalysis,
+    stopVoiceAnalysis,
+    isListening
+  } = useAgentic();
+  
+  const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
+  const [sessionHistory, setSessionHistory] = useState<any[]>([
+    { id: 'sess-123', date: '2025-04-28', subject: 'Interview #1', duration: '18 min' },
+    { id: 'sess-456', date: '2025-04-30', subject: 'Interview #2', duration: '25 min' },
+  ]);
+  
+  // Current interview state
+  const [currentQuestion, setCurrentQuestion] = useState<string>('');
+  const [currentResponse, setCurrentResponse] = useState<string>('');
+  const [manualQuestion, setManualQuestion] = useState<string>('');
+  const [isAskingQuestion, setIsAskingQuestion] = useState<boolean>(false);
+  const [isListeningForResponse, setIsListeningForResponse] = useState<boolean>(false);
+  const [questionQueue, setQuestionQueue] = useState<string[]>([]);
+  const [queueExpanded, setQueueExpanded] = useState<boolean>(false);
+  const [questionInputMinimized, setQuestionInputMinimized] = useState<boolean>(false);
+  
+  // Dragging state for question panel
+  const [questionPanelPosition, setQuestionPanelPosition] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  const [isDraggingQuestionPanel, setIsDraggingQuestionPanel] = useState<boolean>(false);
+  const questionPanelRef = useRef<HTMLDivElement>(null);
+  const [showResponseCard, setShowResponseCard] = useState<boolean>(true); // Always show by default when session is active
+  
+  // Truth assessment state (in a real app, this would come from the Agentic context)
+  const [truthAssessment, setTruthAssessment] = useState<{
+    truthProbability: number;
+    deceptionMarkers: string[];
+    confidenceScore: number;
+    stressLevel: number;
+    deceptionStatement?: string;
+    facialDeceptionMarkers?: string[];
+    facialData?: any;
+    questionAnalysis?: any;
+  }>({ 
+    truthProbability: 75, 
+    deceptionMarkers: [], 
+    confidenceScore: 80,
+    stressLevel: 25 
+  });
+  
+  const handleMenu = (event: React.MouseEvent<HTMLElement>) => {
+    setAnchorEl(event.currentTarget);
+  };
+
+  const handleClose = () => {
+    setAnchorEl(null);
+  };
+  
+  const handleLogout = () => {
+    logout();
+    navigate('/login');
+  };
+  
+  const handleStartSession = useCallback(() => {
+    startSession();
+  }, [startSession]);
+  
+  const handleEndSession = useCallback(async () => {
+    try {
+      const sessionId = await endSession();
+      // In a real app, you'd navigate to report page
+      console.log('Session ended:', sessionId);
+      // Update session history
+      const newSession = {
+        id: sessionId,
+        date: new Date().toISOString().split('T')[0],
+        subject: `Interview #${sessionHistory.length + 1}`,
+        duration: 'Just now'
+      };
+      setSessionHistory(prev => [newSession, ...prev]);
+    } catch (error) {
+      console.error('Error ending session:', error);
+    }
+  }, [endSession, sessionHistory]);
+  
+  // Handle question asked event
+  const handleQuestionAsked = (question: string) => {
+    setCurrentQuestion(question);
+    setShowResponseCard(true);
+    setIsAskingQuestion(false);
+  };
+  
+  // Handle response captured event
+  const handleResponseCaptured = (response: string) => {
+    setCurrentResponse(response);
+  };
+
+  // Generate truth assessment based on voice, face and response analysis
+  const generateTruthAssessment = (question: string, response: string): any => {
+    // Base truth probability - adjusted based on various factors
+    let truthProbability = 75;
+    const deceptionMarkers = [];
+    
+    // Simple content analysis - look for hedging language
+    const hedgingPhrases = ['maybe', 'perhaps', 'i think', 'sort of', 'kind of', 'approximately', 'around', 'um', 'uh'];
+    const detectedHedges = hedgingPhrases.filter(phrase => response.toLowerCase().includes(phrase));
+    
+    if (detectedHedges.length > 0) {
+      truthProbability -= 5 * detectedHedges.length;
+      deceptionMarkers.push(`Hedging language detected: ${detectedHedges.join(', ')}`);
+    }
+    
+    // Check for logical inconsistencies
+    const hasContradiction = checkForContradictions(response);
+    if (hasContradiction) {
+      truthProbability -= 20;
+      deceptionMarkers.push("Internal contradictions in response");
+    }
+    
+    // Check for over-specific or vague answers depending on question
+    if (question.toLowerCase().includes('where') || question.toLowerCase().includes('when')) {
+      // For 'where' and 'when' questions, vagueness can indicate deception
+      const isVague = response.length < 15 || 
+        response.toLowerCase().includes('somewhere') || 
+        response.toLowerCase().includes('sometime');
+      
+      if (isVague) {
+        truthProbability -= 15;
+        deceptionMarkers.push("Vague response to a specific question");
+      }
+    }
+    
+    // Question-specific analysis based on expected truth
+    if (question.toLowerCase().includes('age') || question.toLowerCase().includes('old')) {
+      // Extract claimed age from response
+      const ageMatches = response.match(/(\d+)\s*(years?|yrs?)(\s*old)?/);
+      if (ageMatches) {
+        const claimedAge = parseInt(ageMatches[1], 10);
+        
+        // Check for absurd age claims
+        if (claimedAge < 15 && !response.toLowerCase().includes('child') && !response.toLowerCase().includes('kid')) {
+          // Likely deception for an adult claiming to be a young child
+          truthProbability -= 60;
+          deceptionMarkers.push(`Age claim of ${claimedAge} years appears false based on voice characteristics`);
+        } else if (claimedAge > 100) {
+          // Extremely elderly claims are suspicious without context
+          truthProbability -= 30;
+          deceptionMarkers.push(`Unusual age claim of ${claimedAge} years`);
+        }
+      }
+    }
+    
+    // Question-response consistency checks
+    if (question.toLowerCase().includes('married') && response.toLowerCase().includes('single')) {
+      // Check for consistent answer pattern
+      if (response.toLowerCase().includes('married') && !response.toLowerCase().includes('not married')) {
+        truthProbability -= 30;
+        deceptionMarkers.push("Contradictory statements about marital status");
+      }
+    }
+    
+    // Calculate stress level based on content analysis
+    let stressLevel = 100 - truthProbability;
+    stressLevel = Math.min(100, Math.max(0, stressLevel));
+    
+    // Determine confidence in the assessment
+    const confidenceLevel = calculateConfidence(question, response);
+    
+    return {
+      truthProbability: Math.min(100, Math.max(0, truthProbability)),
+      stressLevel,
+      confidenceLevel, // This will be mapped to confidenceScore in the enhanced assessment
+      confidenceScore: confidenceLevel, // Add for type compatibility
+      deceptionMarkers,
+      deceptionStatement: getDeceptionStatement(deceptionMarkers),
+      questionAnalysis: analyzeQuestionResponseConsistency(question, response)
+    };
+  };
+  
+  // Analyze the consistency between question and response
+  const analyzeQuestionResponseConsistency = (question: string, response: string) => {
+    // Initialize result
+    const result = {
+      isConsistent: true,
+      inconsistencyType: '',
+      details: ''
+    };
+    
+    // Convert to lowercase for easier matching
+    const lowerQuestion = question.toLowerCase();
+    const lowerResponse = response.toLowerCase();
+    
+    // Check for question evasion
+    if (lowerQuestion.includes('?') && lowerResponse.length < 10) {
+      result.isConsistent = false;
+      result.inconsistencyType = 'evasion';
+      result.details = 'Brief response to a complex question may indicate evasion';
+      return result;
+    }
+    
+    // Check age-related questions
+    if (lowerQuestion.includes('age') || lowerQuestion.includes('old')) {
+      const ageMatches = lowerResponse.match(/(\d+)\s*(years?|yrs?)(\s*old)?/);
+      if (ageMatches) {
+        const claimedAge = parseInt(ageMatches[1], 10);
+        
+        if (claimedAge < 15) {
+          result.isConsistent = false;
+          result.inconsistencyType = 'falseAge';
+          result.details = `Claimed age of ${claimedAge} appears inconsistent with adult voice pattern and appearance`;
+          return result;
+        }
+      }
+    }
+    
+    // Check for inconsistent information about past events
+    if ((lowerQuestion.includes('when') || lowerQuestion.includes('where')) && 
+        lowerQuestion.includes('incident')) {
+      
+      if (lowerResponse.includes("i wasn't there") && lowerResponse.includes("i saw")) {
+        result.isConsistent = false;
+        result.inconsistencyType = 'contradictoryAccount';
+        result.details = 'Subject claims both not being present and witnessing the incident';
+        return result;
+      }
+    }
+    
+    return result;
+  };
+  
+  // Check for logical contradictions in the response
+  const checkForContradictions = (text: string) => {
+    const lowerText = text.toLowerCase();
+    
+    // Simple contradiction patterns
+    if ((lowerText.includes('never') && lowerText.includes('sometimes')) ||
+        (lowerText.includes('always') && lowerText.includes('never')) ||
+        (lowerText.includes('definitely') && lowerText.includes('maybe')) ||
+        (lowerText.includes('yes') && lowerText.includes('no') && !lowerText.includes('yes and no')) ||
+        (lowerText.includes("i don't") && lowerText.includes('i do') && !lowerText.includes('but'))) {
+      return true;
+    }
+    
+    return false;
+  };
+  
+  // Calculate confidence in the truth assessment
+  const calculateConfidence = (question: string, response: string) => {
+    // Base confidence
+    let confidence = 65;
+    
+    // More detailed responses generally allow for higher confidence
+    if (response.length > 100) {
+      confidence += 10;
+    }
+    
+    // Clear yes/no questions can have higher confidence
+    if (question.toLowerCase().startsWith('did you') || 
+        question.toLowerCase().startsWith('have you') ||
+        question.toLowerCase().startsWith('are you')) {
+      confidence += 15;
+    }
+    
+    // Specific questions about verifiable facts
+    if (question.toLowerCase().includes('age') || 
+        question.toLowerCase().includes('when') ||
+        question.toLowerCase().includes('where')) {
+      confidence += 10; // Facts are easier to verify
+    }
+    
+    // Cap between 30-95%
+    return Math.min(95, Math.max(30, confidence));
+  };
+  
+  // Generate a summary statement about deception
+  const getDeceptionStatement = (markers: string[]) => {
+    if (markers.length === 0) {
+      return "No significant deception markers detected in this response.";
+    } else if (markers.length === 1) {
+      return `Potential deception detected: ${markers[0]}.`;
+    } else {
+      return `Multiple deception indicators detected: ${markers.length} markers suggest potential dishonesty.`;
+    }
+  };
+
+  // Add a question to the queue
+  const addToQuestionQueue = (question: string) => {
+    setQuestionQueue(prev => [...prev, question]);
+  };
+
+  // Move to the next question in the queue
+  const moveToNextQuestion = () => {
+    if (questionQueue.length > 0) {
+      // Get the next question
+      const nextQuestion = questionQueue[0];
+      // Remove it from the queue
+      setQuestionQueue(prev => prev.slice(1));
+      // Set it as the current question
+      setCurrentQuestion(nextQuestion);
+      handleQuestionAsked(nextQuestion);
+      // Start listening for a voice response
+      setIsListeningForResponse(true);
+      startVoiceAnalysis(); // This would normally activate the microphone
+    }
+  };
+
+  // Clear the entire question queue
+  const clearQuestionQueue = () => {
+    setQuestionQueue([]);
+  };
+
+  // Handle manual question submission directly from dashboard
+  const handleManualQuestionSubmit = () => {
+    if (!manualQuestion.trim()) return;
+    
+    // Add to queue or process immediately based on current state
+    if (isAskingQuestion || isListeningForResponse) {
+      // If already processing a question, add this to the queue
+      addToQuestionQueue(manualQuestion);
+      setManualQuestion(''); // Clear the input
+      return;
+    }
+    
+    // Process the question
+    const question = manualQuestion;
+    setCurrentQuestion(question);
+    handleQuestionAsked(question);
+    
+    // Clear the input after submission
+    setManualQuestion('');
+    
+    // Ready for manual recording - but don't start automatically
+    setIsAskingQuestion(false);
+  };
+  
+  // Handle starting voice recording manually
+  const handleStartRecording = () => {
+    setIsListeningForResponse(true);
+    startVoiceAnalysis(); // Start microphone recording
+  };
+  
+  // Handle stopping voice recording manually
+  const handleStopRecording = () => {
+    // Stop recording
+    setIsListeningForResponse(false);
+    stopVoiceAnalysis();
+    
+    // Process the response (in a real app this would use the actual recorded response)
+    processVoiceResponse();
+  };
+  
+  // Process the voice response after recording
+  const processVoiceResponse = () => {
+    setIsAskingQuestion(true); // Show processing state
+    
+    // Generate a simulated response based on the current question
+    let response = "";
+    const lowerQuestion = currentQuestion.toLowerCase();
+    
+    if (lowerQuestion.includes('name')) {
+      response = "My name is Alex Johnson.";
+    } else if (lowerQuestion.includes('age') || lowerQuestion.includes('old')) {
+      // Deliberately provide a false answer for demonstration
+      response = "I'm 10 years old."; // Obviously false for an adult interviewee
+    } else if (lowerQuestion.includes('where') && lowerQuestion.includes('from')) {
+      response = "I'm from Chicago, born and raised there my whole life.";
+    } else if (lowerQuestion.includes('what happened') || lowerQuestion.includes('incident')) {
+      response = "Um... I wasn't really there when it happened. I mean, I was nearby but didn't actually see anything directly, you know what I mean?";
+    } else if (lowerQuestion.includes('tell the truth')) {
+      response = "I always tell the truth, I have never lied about anything important in my entire life.";
+    } else {
+      response = "Well, that's an interesting question. Let me think about how to answer that... I suppose the answer would depend on several factors.";
+    }
+    
+    // Update the response state
+    setCurrentResponse(response);
+    handleResponseCaptured(response);
+    
+    // Simulate facial analysis data
+    const facialAnalysisData = simulateFacialAnalysis(lowerQuestion, response);
+    
+    // Generate enhanced truth assessment that incorporates facial analysis
+    const assessment = generateEnhancedTruthAssessment(currentQuestion, response, facialAnalysisData);
+    
+    // In a real system, this would update the AgenticContext truth probability
+    // Here we'll simulate that by manually passing it to the TruthAnalysisCard
+    setTruthAssessment(assessment);
+    
+    // Finish processing
+    setTimeout(() => {
+      setIsAskingQuestion(false);
+    }, 1000);
+  };
+  
+  // Simulate facial analysis based on the question and response
+  const simulateFacialAnalysis = (question: string, response: string) => {
+    // In a real system, this would come from actual facial recognition and analysis
+    const facialAnalysisData = {
+      apparentAge: 35, // Simulated detected age from facial recognition
+      confidence: 0.92,
+      emotionalState: 'nervous',
+      microExpressions: [] as string[],
+      eyeMovement: 'shifting' as 'normal' | 'shifting' | 'fixed',
+      sweatDetection: false,
+      facialTension: 0.65,
+    };
+    
+    // Add specific micro-expressions based on question content
+    if (question.includes('age') && response.includes('10 years')) {
+      facialAnalysisData.microExpressions.push('contempt');
+      facialAnalysisData.microExpressions.push('anxiety');
+      facialAnalysisData.sweatDetection = true;
+      facialAnalysisData.eyeMovement = 'shifting';
+    }
+    
+    if (question.includes('incident') || question.includes('happened')) {
+      facialAnalysisData.microExpressions.push('fear');
+      facialAnalysisData.facialTension = 0.85;
+    }
+    
+    if (question.includes('truth')) {
+      facialAnalysisData.microExpressions.push('contempt');
+      facialAnalysisData.eyeMovement = 'shifting';
+    }
+    
+    return facialAnalysisData;
+  };
+  
+  // Enhanced truth assessment that incorporates facial analysis data
+  const generateEnhancedTruthAssessment = (
+    question: string, 
+    response: string, 
+    facialData: any
+  ) => {
+    // Start with the basic assessment
+    const baseAssessment = generateTruthAssessment(question, response);
+    
+    // Initialize additional facial markers array
+    const facialDeceptionMarkers: string[] = [];
+    let facialTruthModifier = 0;
+    
+    // Check for age inconsistency
+    if (question.toLowerCase().includes('age') && response.includes('10 years')) {
+      // Detected age from facial recognition vs claimed age
+      if (facialData.apparentAge > 20) { // Clear mismatch between claimed 10 years and actual appearance
+        facialDeceptionMarkers.push(`Facial recognition estimates age at ${facialData.apparentAge} years (claimed: 10 years)`);
+        facialTruthModifier -= 40; // Strongly reduce truth probability due to clear contradiction
+      }
+    }
+    
+    // Check for micro-expressions that indicate deception
+    if (facialData.microExpressions.includes('contempt')) {
+      facialDeceptionMarkers.push('Contempt micro-expression detected');
+      facialTruthModifier -= 15;
+    }
+    
+    if (facialData.microExpressions.includes('fear')) {
+      facialDeceptionMarkers.push('Fear micro-expression detected');
+      facialTruthModifier -= 10;
+    }
+    
+    if (facialData.microExpressions.includes('anxiety')) {
+      facialDeceptionMarkers.push('Anxiety markers detected');
+      facialTruthModifier -= 5;
+    }
+    
+    // Check for physiological signs of stress
+    if (facialData.sweatDetection) {
+      facialDeceptionMarkers.push('Increased perspiration detected');
+      facialTruthModifier -= 10;
+    }
+    
+    if (facialData.eyeMovement === 'shifting') {
+      facialDeceptionMarkers.push('Shifting eye movements detected');
+      facialTruthModifier -= 15;
+    }
+    
+    if (facialData.facialTension > 0.7) {
+      facialDeceptionMarkers.push('Elevated facial muscle tension');
+      facialTruthModifier -= 10;
+    }
+    
+    // Combine base assessment with facial analysis
+    const enhancedAssessment = {
+      ...baseAssessment,
+      truthProbability: Math.max(5, Math.min(95, baseAssessment.truthProbability + facialTruthModifier)),
+      confidenceScore: baseAssessment.confidenceLevel, // Match the expected property name
+      facialDeceptionMarkers,
+      facialData: {
+        apparentAge: facialData.apparentAge,
+        confidence: facialData.confidence,
+        primaryEmotion: facialData.emotionalState,
+      }
+    };
+    
+    // Add facial analysis context to the deception statement
+    if (facialDeceptionMarkers.length > 0) {
+      enhancedAssessment.deceptionStatement = baseAssessment.deceptionStatement +
+       ` Facial analysis detected ${facialDeceptionMarkers.length} indicators of potential deception.`;
+    }
+    
+    return enhancedAssessment;
+  };
+  
+  // Handle toggling question input minimization
+  const toggleQuestionInputMinimized = () => {
+    setQuestionInputMinimized(!questionInputMinimized);
+  };
+  
+  // Initialize panel as collapsed/minimized
+  useEffect(() => {
+    if (currentSession) {
+      // Default to minimized when session starts
+      setQuestionInputMinimized(true);
+    }
+  }, [currentSession]);
+  
+  // Simplified drag handling for question panel with offset calculation
+  const handleQuestionPanelMouseDown = (e: React.MouseEvent) => {
+    // Only process drag if clicking on the handle
+    if (!(e.target as HTMLElement).closest('.draggable-handle')) return;
+    
+    e.preventDefault();
+    
+    // Get the initial mouse position and panel position
+    const initialMouseX = e.clientX;
+    const initialMouseY = e.clientY;
+    
+    // Get the panel's current position
+    const panelRect = questionPanelRef.current?.getBoundingClientRect();
+    if (!panelRect) return;
+    
+    // Calculate the offset from mouse to panel corner
+    const offsetX = initialMouseX - panelRect.left;
+    const offsetY = initialMouseY - panelRect.top;
+    
+    // Function to handle mouse movement
+    const handleMouseMove = (e: MouseEvent) => {
+      // Calculate new position based on mouse position minus the initial offset
+      const newX = e.clientX - offsetX;
+      const newY = e.clientY - offsetY;
+      
+      // Ensure the panel stays within viewport bounds
+      const maxX = window.innerWidth - panelRect.width;
+      const maxY = window.innerHeight - panelRect.height;
+      
+      const boundedX = Math.max(0, Math.min(newX, maxX));
+      const boundedY = Math.max(0, Math.min(newY, maxY));
+      
+      // Update the panel's position directly
+      if (questionPanelRef.current) {
+        questionPanelRef.current.style.position = 'fixed';
+        questionPanelRef.current.style.left = `${boundedX}px`;
+        questionPanelRef.current.style.top = `${boundedY}px`;
+        questionPanelRef.current.style.right = 'auto';
+        questionPanelRef.current.style.bottom = 'auto';
+        questionPanelRef.current.style.transform = 'none';
+        questionPanelRef.current.style.transition = 'none';
+      }
+      
+      // Update state to reflect that the panel has been manually positioned
+      setIsDraggingQuestionPanel(true);
+    };
+    
+    // Function to handle mouse up
+    const handleMouseUp = () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+      
+      // Re-enable transitions after dragging is complete
+      if (questionPanelRef.current) {
+        questionPanelRef.current.style.transition = 'all 0.3s ease';
+      }
+    };
+    
+    // Add event listeners for drag and drop
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+  };
+  
+  return (
+    <Box sx={{ minHeight: '100vh' }}>
+      <GlassAppBar position="static">
+        <Toolbar>
+          <Typography variant="h5" sx={{ 
+            flexGrow: 1, 
+            fontWeight: 'bold',
+            background: 'linear-gradient(45deg, #F5F7FA, #B8C6DB)',
+            WebkitBackgroundClip: 'text',
+            WebkitTextFillColor: 'transparent'
+          }}>
+            VeraAiSense
+          </Typography>
+          
+          <IconButton
+            size="large"
+            aria-label="account of current user"
+            aria-controls="menu-appbar"
+            aria-haspopup="true"
+            onClick={handleMenu}
+            color="inherit"
+          >
+            <AccountCircleIcon />
+          </IconButton>
+          <Menu
+            id="menu-appbar"
+            anchorEl={anchorEl}
+            anchorOrigin={{
+              vertical: 'bottom',
+              horizontal: 'right',
+            }}
+            keepMounted
+            transformOrigin={{
+              vertical: 'top',
+              horizontal: 'right',
+            }}
+            open={Boolean(anchorEl)}
+            onClose={handleClose}
+            PaperProps={{
+              elevation: 0,
+              sx: {
+                overflow: 'visible',
+                filter: 'drop-shadow(0px 2px 8px rgba(0,0,0,0.32))',
+                mt: 1.5,
+                backdropFilter: 'blur(10px)',
+                bgcolor: 'rgba(30, 41, 59, 0.9)',
+                border: '1px solid rgba(255, 255, 255, 0.08)',
+                '& .MuiAvatar-root': {
+                  width: 32,
+                  height: 32,
+                  ml: -0.5,
+                  mr: 1,
+                },
+              },
+            }}
+          >
+            <MenuItem onClick={() => {
+              handleClose();
+              navigate('/profile');
+            }}>
+              <ListItemIcon>
+                <PersonIcon fontSize="small" />
+              </ListItemIcon>
+              <ListItemText>Profile</ListItemText>
+            </MenuItem>
+            <MenuItem onClick={() => {
+              handleClose();
+              navigate('/settings');
+            }}>
+              <ListItemIcon>
+                <SettingsIcon fontSize="small" />
+              </ListItemIcon>
+              <ListItemText>Settings</ListItemText>
+            </MenuItem>
+            <Divider />
+            <MenuItem onClick={handleLogout}>
+              <ListItemIcon>
+                <LogoutIcon fontSize="small" />
+              </ListItemIcon>
+              <ListItemText>Logout</ListItemText>
+            </MenuItem>
+          </Menu>
+        </Toolbar>
+      </GlassAppBar>
+      
+      <Container maxWidth="xl" sx={{ py: 4 }}>
+        <Grid container spacing={3}>
+          {/* Main content - 9/12 width */}
+          <Grid item xs={12} md={9}>
+            <Box sx={{ mb: 3 }}>
+              <Typography variant="h4" gutterBottom>
+                {currentSession ? 'Active Session' : 'Truth Detection Dashboard'}
+              </Typography>
+              <Typography variant="body1" color="text.secondary" gutterBottom>
+                {currentSession 
+                  ? `Session in progress - Started at ${new Date(currentSession.startTime).toLocaleTimeString()}`
+                  : 'Start a new session to begin lie detection analysis'}
+              </Typography>
+              {currentSession && (
+                <Chip 
+                  label="LIVE" 
+                  color="error" 
+                  size="small"
+                  sx={{ 
+                    mr: 1,
+                    '&::after': {
+                      content: '""',
+                      position: 'absolute',
+                      top: '-4px',
+                      left: '-4px',
+                      right: '-4px',
+                      bottom: '-4px',
+                      border: '2px solid',
+                      borderColor: 'error.main',
+                      borderRadius: '16px',
+                      animation: 'pulse 2s infinite',
+                      opacity: 0.6,
+                      pointerEvents: 'none'
+                    },
+                    '@keyframes pulse': {
+                      '0%': {
+                        transform: 'scale(0.95)',
+                        opacity: 0.6,
+                      },
+                      '70%': {
+                        transform: 'scale(1)',
+                        opacity: 0.3,
+                      },
+                      '100%': {
+                        transform: 'scale(0.95)',
+                        opacity: 0.6,
+                      },
+                    },
+                  }}
+                />
+              )}
+            </Box>
+            
+            <Grid container spacing={3}>
+              {/* Webcam section */}
+              <Grid item xs={12} lg={6}>
+                <WebcamCapture />
+              </Grid>
+              
+              {/* Emotion graph */}
+              <Grid item xs={12} lg={6}>
+                <EmotionGraph />
+              </Grid>
+              
+              {/* Question panel */}
+              <Grid item xs={12} lg={6}>
+                <QuestionPanel 
+                  isRecording={!!currentSession} 
+                  onQuestionAsked={handleQuestionAsked}
+                  onResponseCaptured={handleResponseCaptured}
+                />
+              </Grid>
+              
+              {/* Agentic insights */}
+              <Grid item xs={12} lg={6}>
+                <AgenticOverlay />
+              </Grid>
+
+              {/* Truth Analysis card is now rendered outside the grid below */}
+            </Grid>
+          </Grid>
+          
+          {/* Sidebar - 3/12 width */}
+          <Grid item xs={12} md={3}>
+            {/* Psychological Profile Card */}
+            <Box sx={{ mb: 3 }}>
+              <PsychologicalProfileCard />
+            </Box>
+            
+            {/* Detection Settings Panel */}
+            <DetectionSettings />
+            
+            <Box sx={{ mt: 3 }}>
+              <GlassPaper sx={{ p: 2, mb: 3 }}>
+                <Typography variant="h6" gutterBottom>
+                  Session History
+                </Typography>
+                <Divider sx={{ mb: 2 }} />
+              
+              {sessionHistory.length > 0 ? (
+                <List disablePadding>
+                  {sessionHistory.map((session) => (
+                    <ListItem 
+                      key={session.id} 
+                      button
+                      sx={{ 
+                        mb: 1, 
+                        borderRadius: 2,
+                        backgroundColor: 'rgba(30, 41, 59, 0.5)',
+                        '&:hover': {
+                          backgroundColor: 'rgba(30, 41, 59, 0.8)',
+                        },
+                      }}
+                      onClick={() => navigate(`/reports/${session.id}`)}
+                    >
+                      <ListItemIcon sx={{ minWidth: 40 }}>
+                        <HistoryIcon fontSize="small" color="primary" />
+                      </ListItemIcon>
+                      <ListItemText 
+                        primary={session.subject} 
+                        secondary={
+                          <React.Fragment>
+                            <Box component="span" sx={{ display: 'block' }}>
+                              {session.date}
+                            </Box>
+                            <Box component="span" sx={{ display: 'block', color: 'text.disabled' }}>
+                              {session.duration}
+                            </Box>
+                          </React.Fragment>
+                        }
+                      />
+                    </ListItem>
+                  ))}
+                </List>
+              ) : (
+                <Typography variant="body2" color="text.secondary" align="center" sx={{ py: 2 }}>
+                  No session history yet
+                </Typography>
+              )}
+              
+              <Button
+                fullWidth
+                variant="outlined"
+                startIcon={<AddIcon />}
+                onClick={() => {/* Navigate to session history */}}
+                sx={{ mt: 2 }}
+              >
+                View All Sessions
+              </Button>
+            </GlassPaper>
+            </Box>
+          </Grid>
+        </Grid>
+      </Container>
+      
+      {/* TruthAnalysisCard placed directly in the main container for proper positioning */}
+            <Box 
+              sx={{ 
+                display: 'flex', 
+                justifyContent: 'space-between', 
+                alignItems: 'center',
+                py: 1.5,
+                px: 2, 
+                mb: questionInputMinimized ? 0 : 2,
+                cursor: 'pointer',
+                backgroundColor: 'rgba(20, 20, 35, 0.95)',
+                borderBottom: questionInputMinimized ? 'none' : '1px solid rgba(255, 255, 255, 0.08)',
+                transition: 'all 0.2s ease'
+              }}
+              onClick={toggleQuestionInputMinimized}
+            >
+              <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                <Typography variant="subtitle2" sx={{ 
+                  color: 'white',
+                  display: 'flex',
+                  alignItems: 'center',
+                  fontWeight: 500,
+                  fontSize: '0.9rem'
+                }}>
+                  {/* Status dot indicator for recording state */}
+                  {isListeningForResponse && (
+                    <Box 
+                      sx={{ 
+                        width: 10, 
+                        height: 10, 
+                        borderRadius: '50%', 
+                        backgroundColor: '#ef4444', 
+                        mr: 1,
+                        animation: 'pulse 1.5s infinite',
+                        '@keyframes pulse': {
+                          '0%': { opacity: 1 },
+                          '50%': { opacity: 0.4 },
+                          '100%': { opacity: 1 }
+                        }
+                      }} 
+                    />
+                  )}
+                  {/* Interview Questions label with status */}
+                  <span>
+                    {isListeningForResponse ? 'Recording...' : 
+                    isAskingQuestion ? 'Processing...' : 'Interview Questions'}
+                  </span>
+                </Typography>
+              </Box>
+              <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                {questionQueue.length > 0 && (
+                  <Chip 
+                    size="small" 
+                    label={`${questionQueue.length} in queue`} 
+                    color="primary" 
+                    sx={{ mr: 1, height: 20, '& .MuiChip-label': { px: 1, fontSize: '0.7rem' } }} 
+                    onClick={(e) => { e.stopPropagation(); setQueueExpanded(!queueExpanded); }}
+                  />
+                )}
+                <IconButton
+                  size="small"
+                  onClick={(e) => { e.stopPropagation(); toggleQuestionInputMinimized(); }}
+                  sx={{ color: 'rgba(255,255,255,0.7)', p: 0.5 }}
+                >
+                  {questionInputMinimized ? 
+                    <OpenInFullIcon fontSize="small" /> : 
+                    <MinimizeIcon fontSize="small" />}
+                </IconButton>
+              </Box>
+            </Box>
+
+            {/* Question queue (expandable) */}
+            <Collapse in={queueExpanded && questionQueue.length > 0}>
+              <Box sx={{ mb: 2, maxHeight: '150px', overflowY: 'auto' }}>
+                <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.6)', mb: 1, display: 'block' }}>
+                  Upcoming Questions:
+                </Typography>
+                <List dense disablePadding>
+                  {questionQueue.map((q, index) => (
+                    <ListItem key={index} sx={{ 
+                      py: 0.5, 
+                      backgroundColor: 'rgba(255,255,255,0.05)',
+                      borderRadius: '4px',
+                      mb: 1
+                    }}>
+                      <Typography variant="body2" sx={{ fontSize: '0.85rem', color: 'white' }}>
+                        {q}
+                      </Typography>
+                    </ListItem>
+                  ))}
+                </List>
+                {questionQueue.length > 0 && (
+                  <Button 
+                    size="small" 
+                    variant="outlined" 
+                    color="error" 
+                    onClick={clearQuestionQueue}
+                    sx={{ mt: 1, fontSize: '0.7rem' }}
+                  >
+                    Clear Queue
+                  </Button>
+                )}
+              </Box>
+            </Collapse>
+
+            {/* Only show content when not minimized */}
+            {!questionInputMinimized && (
+              <>
+                {/* Recording control buttons */}
+                <Box sx={{ 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  justifyContent: 'center',
+                  gap: 2,
+                  mt: 1,
+                  mb: 2 
+                }}>
+                  {currentQuestion && (
+                    <>
+                      {!isListeningForResponse ? (
+                        <Button
+                          variant="contained"
+                          color="error"
+                          startIcon={<MicIcon />}
+                          onClick={handleStartRecording}
+                          disabled={isAskingQuestion}
+                          size="small"
+                        >
+                          Start Recording
+                        </Button>
+                      ) : (
+                        <Button
+                          variant="contained"
+                          color="primary"
+                          startIcon={<StopIcon />}
+                          onClick={handleStopRecording}
+                          size="small"
+                        >
+                          Stop & Analyze
+                        </Button>
+                      )}
+                    </>
+                  )}
+                </Box>
+              </>
+            )}
+            
+            {/* Only show these indicators when not minimized */}
+            {!questionInputMinimized && (
+              <>
+                {/* Recording status indicator */}
+                {isListeningForResponse && (
+                  <Box sx={{ 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    justifyContent: 'center',
+                    backgroundColor: 'rgba(255,50,50,0.2)',
+                    borderRadius: '4px',
+                    p: 1,
+                    mb: 2 
+                  }}>
+                    <Box 
+                      sx={{ 
+                        width: 12, 
+                        height: 12, 
+                        borderRadius: '50%', 
+                        backgroundColor: '#ef4444', 
+                        mr: 1,
+                        animation: 'pulse 1.5s infinite',
+                        '@keyframes pulse': {
+                          '0%': { opacity: 1 },
+                          '50%': { opacity: 0.4 },
+                          '100%': { opacity: 1 }
+                        }
+                      }} 
+                    />
+                    <Typography variant="body2" sx={{ color: 'white' }}>
+                      Recording voice response...
+                    </Typography>
+                  </Box>
+                )}
+                
+                {/* Processing indicator */}
+                {isAskingQuestion && (
+                  <Box sx={{ 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    justifyContent: 'center',
+                    backgroundColor: 'rgba(59, 130, 246, 0.2)',
+                    borderRadius: '4px',
+                    p: 1,
+                    mb: 2 
+                  }}>
+                    <CircularProgress size={18} color="primary" sx={{ mr: 1 }} />
+                    <Typography variant="body2" sx={{ color: 'white' }}>
+                      Processing response...
+                    </Typography>
+                  </Box>
+                )}
+              </>
+            )}
+
+            {/* Question input - conditionally rendered based on state */}
+            {!questionInputMinimized ? (
+              <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                <TextField
+                  fullWidth
+                  variant="outlined"
+                  placeholder={isListeningForResponse ? "Waiting for voice response..." : "Type your question here..."}
+                  value={manualQuestion}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setManualQuestion(e.target.value)}
+                  onKeyPress={(e: React.KeyboardEvent) => e.key === 'Enter' && handleManualQuestionSubmit()}
+                  disabled={isAskingQuestion || isListeningForResponse}
+                  size="small"
+                  sx={{
+                    '.MuiOutlinedInput-root': {
+                      borderRadius: '8px',
+                      backgroundColor: 'rgba(0,0,0,0.2)',
+                      height: 40
+                    },
+                    input: { color: 'white', fontSize: '0.9rem' }
+                  }}
+                />
+                <IconButton 
+                  color="primary" 
+                  onClick={handleManualQuestionSubmit}
+                  disabled={!manualQuestion.trim() || isAskingQuestion || isListeningForResponse}
+                  sx={{ ml: 1 }}
+                  size="small"
+                >
+                  {isAskingQuestion ? 
+                    <CircularProgress size={20} color="primary" /> : 
+                    <SendIcon fontSize="small" />}
+                </IconButton>
+              </Box>
+            ) : (
+              // When minimized, we don't show any content
+              null
+            )}
+          </Box>
+        </Box>
+      )}
+
+      {/* Wrap adjacent elements inside a fragment */}
+      <>
+        {/* TruthAnalysisCard placed directly in the main container for proper positioning */}
+        {currentSession && (
+          <TruthAnalysisCard 
+            active={true}
+            question={currentQuestion || 'What would you like to ask?'}
+            response={currentResponse || 'Waiting for response...'}
+            timestamp={Date.now()}
+            truthProbability={truthAssessment.truthProbability} 
+            stressLevel={truthAssessment.stressLevel}
+            confidenceScore={truthAssessment.confidenceScore}
+            deceptionMarkers={truthAssessment.deceptionMarkers}
+            deceptionStatement={truthAssessment.deceptionStatement}
+            facialDeceptionMarkers={truthAssessment.facialDeceptionMarkers || []}
+            facialData={truthAssessment.facialData}
+            questionAnalysis={truthAssessment.questionAnalysis}
+          />
+        )}
+        
+        <SessionControls>
+          {!currentSession ? (
+            <ButtonGradient
+              variant="contained"
+              color="primary"
+              startIcon={<AddIcon />}
+              onClick={handleStartSession}
+              size="large"
+            >
+              Start New Session
+            </ButtonGradient>
+          ) : (
+            <ButtonGradient
+              variant="contained"
+              color="secondary"
+              onClick={handleEndSession}
+              size="large"
+            >
+              End Session
+            </ButtonGradient>
+          )}
+        </SessionControls>
+      </>
+
+      {/* Wrap adjacent elements inside a fragment */}
+      <>
+        {/* TruthAnalysisCard placed directly in the main container for proper positioning */}
+        {currentSession && (
+          <TruthAnalysisCard 
+            active={true}
+            question={currentQuestion || 'What would you like to ask?'}
+            response={currentResponse || 'Waiting for response...'}
+            timestamp={Date.now()}
+            truthProbability={truthAssessment.truthProbability} 
+            stressLevel={truthAssessment.stressLevel}
+            confidenceScore={truthAssessment.confidenceScore}
+            deceptionMarkers={truthAssessment.deceptionMarkers}
+            deceptionStatement={truthAssessment.deceptionStatement}
+            facialDeceptionMarkers={truthAssessment.facialDeceptionMarkers || []}
+            facialData={truthAssessment.facialData}
+            questionAnalysis={truthAssessment.questionAnalysis}
+          />
+        )}
+        
+        <SessionControls>
+          {!currentSession ? (
+            <ButtonGradient
+              variant="contained"
+              color="primary"
+              startIcon={<AddIcon />}
+              onClick={handleStartSession}
+              size="large"
+            >
+              Start New Session
+            </ButtonGradient>
+          ) : (
+            <ButtonGradient
+              variant="contained"
+              color="secondary"
+              onClick={handleEndSession}
+              size="large"
+            >
+              End Session
+            </ButtonGradient>
+          )}
+        </SessionControls>
+      </>
+    </Box>
+  );
+};
+
+export default Dashboard;

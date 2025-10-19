@@ -1,0 +1,26 @@
+# Netlify configuration for VeriSenseAI Frontend
+[build]
+  base = "frontend/"
+  publish = "dist/"
+  command = "npm run build"
+
+# Environment variables for production
+[build.environment]
+  VITE_API_URL = "https://verisense-backend-app-c00a14709e03.herokuapp.com/api"
+  VITE_MOCK_MODE = "false"
+  # Layout configuration for TruthAnalysisCard and Interview Questions panel
+  VITE_ANALYSIS_CARD_TOP = "20"
+  VITE_INTERVIEW_PANEL_TOP = "80"
+  NODE_VERSION = "16"
+
+# Handle client-side routing for SPA
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+# Fallback for deployment issues
+[[redirects]]
+  from = "/*"
+  to = "/fallback.html"
+  status = 404
