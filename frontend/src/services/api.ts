@@ -20,6 +20,7 @@ const api = axios.create({
     'Content-Type': 'application/json',
   },
   timeout: 15000, // 15 seconds to account for potential mobile network latency
+  withCredentials: false, // Disable credentials for CORS
 });
 
 // Add request interceptor for authentication
