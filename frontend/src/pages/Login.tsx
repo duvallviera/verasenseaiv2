@@ -6,7 +6,7 @@ import {
 } from '@mui/material';
 import { styled } from '@mui/material/styles';
 import { Visibility, VisibilityOff, Login as LoginIcon } from '@mui/icons-material';
-// import { useAuth } from '../context/AuthContext'; // Commented out to avoid network calls
+import { useAuth } from '../context/AuthContext';
 
 // Styled components
 const GlassPaper = styled(Paper)(({ theme }) => ({
@@ -54,27 +54,16 @@ const Login: React.FC = () => {
     });
   };
 
+  const { login } = useAuth();
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError('');
 
     try {
-      // Mock login for testing - no backend required
       if (formData.email && formData.password) {
-        // Simulate API delay
-        await new Promise(resolve => setTimeout(resolve, 1500));
-        
-        // Simulate successful login
-        localStorage.setItem('token', 'mock-token-' + Date.now());
-        localStorage.setItem('user', JSON.stringify({
-          id: '1',
-          name: 'Test User',
-          email: formData.email,
-          role: 'user'
-        }));
-        
-        // Navigate to dashboard
+        await login(formData.email, formData.password);
         navigate('/dashboard');
       } else {
         setError('Please enter both email and password');
